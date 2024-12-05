@@ -1,0 +1,21 @@
+
+.DS_Store
+.sass-cache/
+.tmp/
+*-lock*
+bower_components/
+dist/
+node_modules/
+npm-debug.log*
+target
+
+# Editor directories and files
+*.iml
+.idea
+.classpath
+.project
+.settings
+.vscode
+
+# Project directories and path
+src/main/resources/application-*.properties
