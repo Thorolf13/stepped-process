@@ -1,3 +1,5 @@
+* 1.0.5
+  - fix retry incrementation when waiting job
 * 1.0.4
   - add documentation
   - add developers informations

@@ -12,7 +12,7 @@
 
     <groupId>io.github.thorolf13.stepped-process</groupId>
     <artifactId>stepped-process</artifactId>
-    <version>1.0.4</version>
+    <version>1.0.5</version>
 
     <packaging>jar</packaging>
     <name>stepped-process</name>

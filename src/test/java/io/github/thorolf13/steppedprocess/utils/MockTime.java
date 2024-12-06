@@ -33,12 +33,10 @@ public class MockTime {
             result = func.get();
             clockMock.close();
         } catch (Throwable err) {
-            if (clockMock != null) {
-                try {
-                    clockMock.close();
-                } catch (Throwable err2) {
-                    err.addSuppressed(err2);
-                }
+            try {
+                clockMock.close();
+            } catch (Throwable err2) {
+                err.addSuppressed(err2);
             }
 
             throw err;

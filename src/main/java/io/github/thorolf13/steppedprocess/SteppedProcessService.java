@@ -225,40 +225,35 @@ public class SteppedProcessService {
 
         SteppedProcess<?> steppedProcess = getProcess(job.getTypeCode());
 
-        if( Job.Status.PENDING.equals(job.getStatus()) ){
-            startProcess(job, steppedProcess);
-        } else {
-            resumeProcess(job, steppedProcess);
-        }
+        startOrResumeJob(job, steppedProcess);
     }
 
-    private void resumeProcess(Job job, SteppedProcess<?> steppedProcess) {
+
+    private void startOrResumeJob(Job job, SteppedProcess<?> steppedProcess) {
         if( job.getNextExecution() != null && job.getNextExecution().isAfter(LocalDateTime.now())){
             return;
         }
 
-        job.setRetry(job.getRetry() + 1);
+        String logMessage = switch (job.getStatus()) {
+            case PENDING -> {
+                job.setStep(steppedProcess.getStartStep().getCode());
+                yield "Start job : " + job;
+            }
+            case RESUMING -> {
+                job.setRetry(job.getRetry() + 1);
+                yield "Resume job after error : " + job;
+            }
+            case WAITING -> "Resume waiting job : " + job;
+            default ->
+                throw new ProcessIllegalStateException("Job already processed : " + job.getUuid(), JOB_ALREADY_PROCESSED);
+        };
+
         job.setStatus(Job.Status.RUNNING);
         jobRepository.save(job);
-
         enhanceMdc(job);
-        log.info("Resuming job : " + job);
+        log.info(logMessage);
 
         processing(job, steppedProcess, job.getStep());
-    }
-
-    private void startProcess(Job job, SteppedProcess<?> steppedProcess) {
-        if( job.getNextExecution() != null && job.getNextExecution().isAfter(LocalDateTime.now())){
-            return;
-        }
-
-        job.setStatus(Job.Status.RUNNING);
-        jobRepository.save(job);
-
-        enhanceMdc(job);
-        log.info("Starting job : " + job);
-
-        processing(job, steppedProcess, steppedProcess.getStartStep().getCode());
     }
 
     private <T> JobContext<T> buildContext(Job job, SteppedProcess<T> steppedProcess) throws Exception {
