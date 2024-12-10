@@ -7,7 +7,7 @@ import io.github.thorolf13.steppedprocess.model.SteppedProcess;
 import io.github.thorolf13.steppedprocess.provided.JobRepository;
 import io.github.thorolf13.steppedprocess.model.Job;
 import io.github.thorolf13.steppedprocess.model.Step;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
 import org.slf4j.MDC;
 
 import java.time.LocalDateTime;
@@ -15,20 +15,22 @@ import java.util.*;
 
 import static io.github.thorolf13.steppedprocess.exception.ExceptionCode.*;
 import static io.github.thorolf13.steppedprocess.utils.DateUtils.isBeforeOrEqual;
-import static io.github.thorolf13.steppedprocess.utils.ExceptionsUtils.buildErrorMesage;
 import static io.github.thorolf13.steppedprocess.utils.ListUtils.concat;
+import static io.github.thorolf13.steppedprocess.utils.Utils.defaultValue;
 
-@Slf4j
 public class SteppedProcessService {
 
     public static final String LOG_MARKER_PREFIX = "stepped-process.";
 
     private final JobRepository jobRepository;
+    private final Logger log;
+
     private final Map<String, SteppedProcess<?>> processMap;
 
 
-    public SteppedProcessService(JobRepository jobRepository){
+    public SteppedProcessService(JobRepository jobRepository, Logger log){
         this.jobRepository = jobRepository;
+        this.log = log;
         processMap = new HashMap<>();
     }
 
@@ -240,7 +242,7 @@ public class SteppedProcessService {
                 yield "Start job : " + job;
             }
             case RESUMING -> {
-                job.setRetry(job.getRetry() + 1);
+                job.setRetry(defaultValue(job.getRetry(), 0) + 1);
                 yield "Resume job after error : " + job;
             }
             case WAITING -> "Resume waiting job : " + job;
@@ -330,14 +332,14 @@ public class SteppedProcessService {
     }
 
     private <T> void onExecutionError(Job job, SteppedProcess<T> steppedProcess, Step<T> step, Throwable t) {
-        if( step.getMaxRetry() != null && job.getRetry() < step.getMaxRetry() ) {
+        if( step.getMaxRetry() != null && defaultValue(job.getRetry(), 0) < step.getMaxRetry() ) {
             //retry
 
             log.warn("Error on job : " + job + " step : " + step.getCode() + " set to resuming", t);
 
             job.setStatus(Job.Status.RESUMING);
             job.setNextExecution(LocalDateTime.now().plus(step.getRetryDelay()));
-            job.setMessage(buildErrorMesage(t));
+            job.setMessage(serializeError(t));
             jobRepository.save(job);
         } else {
             //error
@@ -350,7 +352,7 @@ public class SteppedProcessService {
         log.error("Error on job : " + job, t);
 
         job.setStatus(Job.Status.ERROR);
-        job.setMessage(buildErrorMesage(t));
+        job.setMessage(serializeError(t));
         jobRepository.save(job);
 
         try{
@@ -376,5 +378,21 @@ public class SteppedProcessService {
         MDC.getCopyOfContextMap().keySet().stream()
             .filter(key -> key.startsWith(LOG_MARKER_PREFIX))
             .forEach(MDC::remove);
+    }
+
+    //############################################
+    // error
+    //############################################
+
+    private String serializeError(Throwable t){
+        StringBuilder sb = new StringBuilder();
+
+        sb.append(t.toString());
+        while (t.getCause() != null){
+            t = t.getCause();
+            sb.append("\nCaused by : ").append(t.toString());
+        }
+
+        return sb.toString();
     }
 }

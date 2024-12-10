@@ -28,15 +28,6 @@ public class Job{
     @Setter
     private LocalDateTime nextExecution;
 
-    public Job(String typeCode, String key, String data, LocalDateTime nextExecution) {
-        this.typeCode = typeCode;
-        this.key = key;
-        this.data = data;
-        this.status = Status.PENDING;
-        this.nextExecution = nextExecution;
-    }
-
-
     public enum Status {
         PENDING,
         RUNNING,

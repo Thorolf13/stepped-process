@@ -8,6 +8,7 @@ import io.github.thorolf13.steppedprocess.provided.JobRepository;
 import io.github.thorolf13.steppedprocess.utils.MockTime;
 import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,9 +16,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.Logger;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.Trigger;
 import org.springframework.scheduling.support.CronTrigger;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -35,6 +38,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@Slf4j
 public class SteppedProcessTest {
 
     @InjectMocks
@@ -49,6 +53,7 @@ public class SteppedProcessTest {
 
     @BeforeEach
     public void setUp() {
+        ReflectionTestUtils.setField(steppedProcessService, "log", log);
         mockJobRepository();
     }
 
@@ -123,7 +128,9 @@ public class SteppedProcessTest {
 
         assertThat(job.getStatus()).isEqualTo(Job.Status.ERROR);
         assertThat(job.getData()).isEqualTo("[STEP_1]");
-        assertThat(job.getMessage()).isEqualTo("ERROR\ncaused by : CAUSE2");
+        assertThat(job.getMessage()).isEqualTo("java.lang.RuntimeException: ERROR\n" +
+            "Caused by : java.lang.RuntimeException: CAUSE1\n" +
+            "Caused by : java.lang.RuntimeException: CAUSE2");
 
         verify(aService, never()).success(any());
         verify(aService, times(1)).error(any(), any());
@@ -171,7 +178,7 @@ public class SteppedProcessTest {
 
         assertThat(job.getStatus()).isEqualTo(Job.Status.RESUMING);
         assertThat(job.getData()).isEqualTo("[STEP_1]");
-        assertThat(job.getMessage()).isEqualTo("ERROR");
+        assertThat(job.getMessage()).isEqualTo("java.lang.RuntimeException: ERROR");
         verify(aService, never()).success(any());
         verify(aService, never()).error(any(), any());
 
@@ -232,7 +239,7 @@ public class SteppedProcessTest {
 
         assertThat(job.getStatus()).isEqualTo(Job.Status.RESUMING);
         assertThat(job.getData()).isEqualTo("[STEP_1]");
-        assertThat(job.getMessage()).isEqualTo("ERROR");
+        assertThat(job.getMessage()).isEqualTo("java.lang.RuntimeException: ERROR");
         verify(aService, never()).success(any());
         verify(aService, never()).error(any(), any());
 
@@ -248,7 +255,7 @@ public class SteppedProcessTest {
         //nothing should happen
         assertThat(job.getStatus()).isEqualTo(Job.Status.RESUMING);
         assertThat(job.getData()).isEqualTo("[STEP_1]");
-        assertThat(job.getMessage()).isEqualTo("ERROR");
+        assertThat(job.getMessage()).isEqualTo("java.lang.RuntimeException: ERROR");
         verify(aService, never()).success(any());
         verify(aService, never()).error(any(), any());
 
