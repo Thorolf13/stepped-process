@@ -30,7 +30,7 @@ jobs:
         gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
 
     - name: Publish to Maven central
-      run: mvn --batch-mode deploy
+      run: mvn --batch-mode -P github-release deploy
       env:
         MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
