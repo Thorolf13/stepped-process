@@ -1,3 +1,7 @@
+* 1.0.6
+  - Logger is now provided by implementation
+  - fix minor issues
+  - github actions : make gpg sign profile-dependent
 * 1.0.5
   - fix retry incrementation when waiting job
 * 1.0.4

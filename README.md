@@ -8,7 +8,7 @@ Provide an API to declare a process with a list of steps, with options to retry 
 <dependency>
     <groupId>io.github.thorolf13.stepped-process</groupId>
     <artifactId>stepped-process</artifactId>
-    <version>1.0.3</version>
+    <version>1.0.6</version>
 </dependency>
 ```
 
@@ -18,11 +18,11 @@ Provide an API to declare a process with a list of steps, with options to retry 
 
 ```java
 @Configuration
+@Slf4j
 public class Config {
-
     @Bean
     public SteppedProcessService steppedProcessService(JobDataRepository jobRepository) {
-        return new SteppedProcessService(jobRepository);
+        return new SteppedProcessService(jobRepository, log);
     }
 }
 ```
