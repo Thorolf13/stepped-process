@@ -2,11 +2,8 @@ package io.github.thorolf13.steppedprocess;
 
 import io.github.thorolf13.steppedprocess.exception.ProcessDuplicateJobException;
 import io.github.thorolf13.steppedprocess.exception.ProcessIllegalStateException;
-import io.github.thorolf13.steppedprocess.model.JobContext;
-import io.github.thorolf13.steppedprocess.model.SteppedProcess;
+import io.github.thorolf13.steppedprocess.model.*;
 import io.github.thorolf13.steppedprocess.provided.JobRepository;
-import io.github.thorolf13.steppedprocess.model.Job;
-import io.github.thorolf13.steppedprocess.model.Step;
 import org.slf4j.Logger;
 import org.slf4j.MDC;
 
@@ -70,14 +67,14 @@ public class SteppedProcessService {
 
         List<Job> existingJobs = jobRepository.getByTypeCodeAndKey(typeCode, key)
             .stream()
-            .filter(job -> !Job.Status.CANCELED.equals(job.getStatus()))
+            .filter(job -> !Status.CANCELED.equals(job.getStatus()))
             .toList();
         if(  !existingJobs.isEmpty() ){
             switch (steppedProcess.getDuplicatePolicy()){
                 case DENY:
                     throw new ProcessDuplicateJobException("Job already exists for process : " + typeCode + " key : " + key);
                 case DENY_PENDING:
-                    if( existingJobs.stream().anyMatch(job -> Job.Status.PENDING.equals(job.getStatus())) ){
+                    if( existingJobs.stream().anyMatch(job -> Status.PENDING.equals(job.getStatus())) ){
                         throw new ProcessDuplicateJobException("Pending job already exists for process : " + typeCode + " key : " + key);
                     }
                     break;
@@ -96,7 +93,7 @@ public class SteppedProcessService {
         Job job = jobRepository.getByUuid(uuid)
             .orElseThrow(() -> new ProcessIllegalStateException("Job not found for uuid : " + uuid, JOB_NOT_FOUND));
 
-        job.setStatus(Job.Status.CANCELED);
+        job.setStatus(Status.CANCELED);
         jobRepository.save(job);
     }
 
@@ -114,11 +111,11 @@ public class SteppedProcessService {
         Job job = jobRepository.getByUuid(uuid)
             .orElseThrow(() -> new ProcessIllegalStateException("Job not found for uuid : " + uuid, JOB_NOT_FOUND));
 
-        if( !Job.Status.ERROR.equals(job.getStatus())){
+        if( !Status.ERROR.equals(job.getStatus())){
             throw new ProcessIllegalStateException("Job not in error status : " + job.getUuid(), JOB_STATUS_ERROR);
         }
 
-        job.setStatus(Job.Status.RESUMING);
+        job.setStatus(Status.RESUMING);
         if( overrideData != null ){
             SteppedProcess<T> steppedProcess = getProcess(job.getTypeCode());
             try {
@@ -137,7 +134,7 @@ public class SteppedProcessService {
         Job job = jobRepository.getByUuid(uuid)
             .orElseThrow(() -> new ProcessIllegalStateException("Job not found for uuid : " + uuid, JOB_NOT_FOUND));
 
-        if( !Job.Status.PENDING.equals(job.getStatus())){
+        if( !Status.PENDING.equals(job.getStatus())){
             throw new ProcessIllegalStateException("Job not in pending status : " + job.getUuid(), JOB_STATUS_ERROR);
         }
 
@@ -167,9 +164,9 @@ public class SteppedProcessService {
 
 
         List<Job> jobs = concat(
-            jobRepository.getByTypeCodeAndStatus(typeCode, Job.Status.RESUMING),
-            jobRepository.getByTypeCodeAndStatus(typeCode, Job.Status.WAITING),
-            jobRepository.getByTypeCodeAndStatus(typeCode, Job.Status.PENDING)
+            jobRepository.getByTypeCodeAndStatus(typeCode, Status.RESUMING),
+            jobRepository.getByTypeCodeAndStatus(typeCode, Status.WAITING),
+            jobRepository.getByTypeCodeAndStatus(typeCode, Status.PENDING)
         ).stream()
             .filter(job -> job.getNextExecution() == null || isBeforeOrEqual(job.getNextExecution(), LocalDateTime.now()))
             .toList();
@@ -199,9 +196,9 @@ public class SteppedProcessService {
     //############################################
 
     private int countJobs(String typeCode){
-        return jobRepository.countByTypeCodeAndStatus(typeCode, Job.Status.RESUMING)
-            + jobRepository.countByTypeCodeAndStatus(typeCode, Job.Status.WAITING)
-            + jobRepository.countByTypeCodeAndStatus(typeCode, Job.Status.PENDING);
+        return jobRepository.countByTypeCodeAndStatus(typeCode, Status.RESUMING)
+            + jobRepository.countByTypeCodeAndStatus(typeCode, Status.WAITING)
+            + jobRepository.countByTypeCodeAndStatus(typeCode, Status.PENDING);
     }
 
     private <T> SteppedProcess<T> getProcess(String typeCode){
@@ -218,9 +215,9 @@ public class SteppedProcessService {
 
 
     private void processingJobInt(Job job) {
-        if( !Job.Status.PENDING.equals(job.getStatus())
-            && !Job.Status.RESUMING.equals(job.getStatus())
-            && !Job.Status.WAITING.equals(job.getStatus())
+        if( !Status.PENDING.equals(job.getStatus())
+            && !Status.RESUMING.equals(job.getStatus())
+            && !Status.WAITING.equals(job.getStatus())
         ){
             throw new ProcessIllegalStateException("Job already processed : " + job.getUuid(), JOB_ALREADY_PROCESSED);
         }
@@ -250,7 +247,7 @@ public class SteppedProcessService {
                 throw new ProcessIllegalStateException("Job already processed : " + job.getUuid(), JOB_ALREADY_PROCESSED);
         };
 
-        job.setStatus(Job.Status.RUNNING);
+        job.setStatus(Status.RUNNING);
         jobRepository.save(job);
         enhanceMdc(job);
         log.info(logMessage);
@@ -290,7 +287,7 @@ public class SteppedProcessService {
         String nextStepCode = null;
         try {
             if (!step.getCondition().test(context)) {
-                job.setStatus(Job.Status.WAITING);
+                job.setStatus(Status.WAITING);
                 jobRepository.save(job);
                 return;
             }
@@ -318,7 +315,7 @@ public class SteppedProcessService {
     //############################################
 
     private <T> void onSuccess(Job job, SteppedProcess<T> steppedProcess) {
-        job.setStatus(Job.Status.SUCCESS);
+        job.setStatus(Status.SUCCESS);
         job.setStep(null);
         jobRepository.save(job);
 
@@ -337,7 +334,7 @@ public class SteppedProcessService {
 
             log.warn("Error on job : " + job + " step : " + step.getCode() + " set to resuming", t);
 
-            job.setStatus(Job.Status.RESUMING);
+            job.setStatus(Status.RESUMING);
             job.setNextExecution(LocalDateTime.now().plus(step.getRetryDelay()));
             job.setMessage(serializeError(t));
             jobRepository.save(job);
@@ -351,7 +348,7 @@ public class SteppedProcessService {
     private <T> void onError(Job job, SteppedProcess<T> steppedProcess, Throwable t) {
         log.error("Error on job : " + job, t);
 
-        job.setStatus(Job.Status.ERROR);
+        job.setStatus(Status.ERROR);
         job.setMessage(serializeError(t));
         jobRepository.save(job);
 

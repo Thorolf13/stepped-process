@@ -2,12 +2,15 @@ package io.github.thorolf13.steppedprocess;
 
 import io.github.thorolf13.steppedprocess.exception.ProcessDuplicateJobException;
 import io.github.thorolf13.steppedprocess.model.Job;
+import io.github.thorolf13.steppedprocess.model.Status;
 import io.github.thorolf13.steppedprocess.model.Step;
 import io.github.thorolf13.steppedprocess.model.SteppedProcess;
 import io.github.thorolf13.steppedprocess.provided.JobRepository;
 import io.github.thorolf13.steppedprocess.utils.MockTime;
 import lombok.AllArgsConstructor;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.BeforeEach;
@@ -88,7 +91,7 @@ public class SteppedProcessTest {
         Job job = steppedProcessService.createJob("PROCESS_1", "JOB_1", new Data());
         steppedProcessService.processingJob("uuid-1");
 
-        assertThat(job.getStatus()).isEqualTo(Job.Status.SUCCESS);
+        assertThat(job.getStatus()).isEqualTo(Status.SUCCESS);
         assertThat(job.getData()).isEqualTo("[STEP_1,STEP_2]");
 
         verify(aService, times(1)).success(any());
@@ -126,7 +129,7 @@ public class SteppedProcessTest {
         steppedProcessService.processingJob("uuid-1");
 
 
-        assertThat(job.getStatus()).isEqualTo(Job.Status.ERROR);
+        assertThat(job.getStatus()).isEqualTo(Status.ERROR);
         assertThat(job.getData()).isEqualTo("[STEP_1]");
         assertThat(job.getMessage()).isEqualTo("java.lang.RuntimeException: ERROR\n" +
             "Caused by : java.lang.RuntimeException: CAUSE1\n" +
@@ -176,7 +179,7 @@ public class SteppedProcessTest {
         Job job = steppedProcessService.createJob("PROCESS_1", "JOB_1", new Data());
         steppedProcessService.processingJob("uuid-1");
 
-        assertThat(job.getStatus()).isEqualTo(Job.Status.RESUMING);
+        assertThat(job.getStatus()).isEqualTo(Status.RESUMING);
         assertThat(job.getData()).isEqualTo("[STEP_1]");
         assertThat(job.getMessage()).isEqualTo("java.lang.RuntimeException: ERROR");
         verify(aService, never()).success(any());
@@ -184,7 +187,7 @@ public class SteppedProcessTest {
 
         steppedProcessService.processingJob("uuid-1");
 
-        assertThat(job.getStatus()).isEqualTo(Job.Status.SUCCESS);
+        assertThat(job.getStatus()).isEqualTo(Status.SUCCESS);
         assertThat(job.getData()).isEqualTo("[STEP_1,STEP_2]");
         assertThat(job.getMessage()).isEqualTo(null);
         verify(aService, times(1)).success(any());
@@ -237,7 +240,7 @@ public class SteppedProcessTest {
             () -> steppedProcessService.processingJob("uuid-1")
         );
 
-        assertThat(job.getStatus()).isEqualTo(Job.Status.RESUMING);
+        assertThat(job.getStatus()).isEqualTo(Status.RESUMING);
         assertThat(job.getData()).isEqualTo("[STEP_1]");
         assertThat(job.getMessage()).isEqualTo("java.lang.RuntimeException: ERROR");
         verify(aService, never()).success(any());
@@ -253,7 +256,7 @@ public class SteppedProcessTest {
             () -> steppedProcessService.processingJob("uuid-1")
         );
         //nothing should happen
-        assertThat(job.getStatus()).isEqualTo(Job.Status.RESUMING);
+        assertThat(job.getStatus()).isEqualTo(Status.RESUMING);
         assertThat(job.getData()).isEqualTo("[STEP_1]");
         assertThat(job.getMessage()).isEqualTo("java.lang.RuntimeException: ERROR");
         verify(aService, never()).success(any());
@@ -265,7 +268,7 @@ public class SteppedProcessTest {
             () -> steppedProcessService.processingJob("uuid-1")
         );
 
-        assertThat(job.getStatus()).isEqualTo(Job.Status.SUCCESS);
+        assertThat(job.getStatus()).isEqualTo(Status.SUCCESS);
         assertThat(job.getData()).isEqualTo("[STEP_1,STEP_2]");
         assertThat(job.getMessage()).isEqualTo(null);
         verify(aService, times(1)).success(any());
@@ -314,7 +317,7 @@ public class SteppedProcessTest {
         Job job = steppedProcessService.createJob("PROCESS_1", "JOB_1", new Data());
         steppedProcessService.processingJob("uuid-1");
 
-        assertThat(job.getStatus()).isEqualTo(Job.Status.WAITING);
+        assertThat(job.getStatus()).isEqualTo(Status.WAITING);
         assertThat(job.getData()).isEqualTo("[STEP_1]");
         assertThat(job.getMessage()).isEqualTo(null);
         verify(aService, never()).success(any());
@@ -322,7 +325,7 @@ public class SteppedProcessTest {
 
         steppedProcessService.processingJob("uuid-1");
 
-        assertThat(job.getStatus()).isEqualTo(Job.Status.SUCCESS);
+        assertThat(job.getStatus()).isEqualTo(Status.SUCCESS);
         assertThat(job.getData()).isEqualTo("[STEP_1,STEP_2]");
         assertThat(job.getMessage()).isEqualTo(null);
         verify(aService, times(1)).success(any());
@@ -366,7 +369,7 @@ public class SteppedProcessTest {
             () -> steppedProcessService.processingJob("uuid-1")
         );
 
-        assertThat(job.getStatus()).isEqualTo(Job.Status.PENDING);
+        assertThat(job.getStatus()).isEqualTo(Status.PENDING);
         assertThat(job.getData()).isEqualTo("[]");
         assertThat(job.getMessage()).isEqualTo(null);
         verify(aService, never()).success(any());
@@ -377,7 +380,7 @@ public class SteppedProcessTest {
             () -> steppedProcessService.processingJob("uuid-1")
         );
 
-        assertThat(job.getStatus()).isEqualTo(Job.Status.SUCCESS);
+        assertThat(job.getStatus()).isEqualTo(Status.SUCCESS);
         assertThat(job.getData()).isEqualTo("[STEP_1,STEP_2]");
         assertThat(job.getMessage()).isEqualTo(null);
         verify(aService, times(1)).success(any());
@@ -526,11 +529,11 @@ public class SteppedProcessTest {
         steppedProcessService.registerProcess(steppedProcess);
         Job job = steppedProcessService.createJob("PROCESS_1", "JOB_1", new Data());
 
-        assertThat(job.getStatus()).isEqualTo(Job.Status.PENDING);
+        assertThat(job.getStatus()).isEqualTo(Status.PENDING);
 
         steppedProcessService.processingJobs("PROCESS_1");
 
-        assertThat(job.getStatus()).isEqualTo(Job.Status.SUCCESS);
+        assertThat(job.getStatus()).isEqualTo(Status.SUCCESS);
     }
 
     @Test
@@ -556,11 +559,11 @@ public class SteppedProcessTest {
         steppedProcessService.registerProcess(steppedProcess);
         Job job = steppedProcessService.createJob("PROCESS_1", "JOB_1", new Data());
 
-        assertThat(job.getStatus()).isEqualTo(Job.Status.PENDING);
+        assertThat(job.getStatus()).isEqualTo(Status.PENDING);
 
         scheduler.triggerTasks();
 
-        assertThat(job.getStatus()).isEqualTo(Job.Status.SUCCESS);
+        assertThat(job.getStatus()).isEqualTo(Status.SUCCESS);
     }
 
     @Test
@@ -595,16 +598,16 @@ public class SteppedProcessTest {
         steppedProcessService.registerProcess(steppedProcess);
         Job job = steppedProcessService.createJob("PROCESS_1", "JOB_1", new Data());
 
-        assertThat(job.getStatus()).isEqualTo(Job.Status.PENDING);
+        assertThat(job.getStatus()).isEqualTo(Status.PENDING);
 
         scheduler.triggerTasks();
 
-        assertThat(job.getStatus()).isEqualTo(Job.Status.PENDING);
+        assertThat(job.getStatus()).isEqualTo(Status.PENDING);
 
         concordiaIsMaster.set(true);
         scheduler.triggerTasks();
 
-        assertThat(job.getStatus()).isEqualTo(Job.Status.SUCCESS);
+        assertThat(job.getStatus()).isEqualTo(Status.SUCCESS);
     }
 
     //############################################
@@ -616,12 +619,12 @@ public class SteppedProcessTest {
         AtomicInteger jobCounter = new AtomicInteger(0);
 
         lenient().when(jobRepository.createJob(any(), any(), any(), any())).thenAnswer(invocation -> {
-            Job job = new Job(
+            Job job = new JobImpl(
                 "uuid-"+jobCounter.incrementAndGet(),
                 invocation.getArgument(0),
                 invocation.getArgument(1),
                 invocation.getArgument(2),
-                Job.Status.PENDING,
+                Status.PENDING,
                 null,
                 null,
                 null,
@@ -729,5 +732,20 @@ public class SteppedProcessTest {
             }
             return d;
         }
+    }
+
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    class JobImpl implements Job{
+        private String uuid;
+        private String typeCode;
+        private String key;
+        private String data;
+        private Status status;
+        private String step;
+        private String message;
+        private Integer retry;
+        private LocalDateTime nextExecution;
     }
 }

@@ -1,3 +1,5 @@
+* 1.0.7
+  - change Job to interface
 * 1.0.6
   - Logger is now provided by implementation
   - fix minor issues
