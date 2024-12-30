@@ -19,7 +19,7 @@ public class SteppedProcessService {
 
     public static final String LOG_MARKER_PREFIX = "stepped-process.";
 
-    private final JobRepository jobRepository;
+    private final JobRepository<Job> jobRepository;
     private final Logger log;
 
     private final Map<String, SteppedProcess<?>> processMap;
@@ -65,7 +65,7 @@ public class SteppedProcessService {
             throw new ProcessIllegalStateException("Error on serialize data", SERIALIZE_ERROR, e);
         }
 
-        List<Job> existingJobs = jobRepository.getByTypeCodeAndKey(typeCode, key)
+        List<Job> existingJobs = jobRepository.findAllByTypeCodeAndKey(typeCode, key)
             .stream()
             .filter(job -> !Status.CANCELED.equals(job.getStatus()))
             .toList();
@@ -90,11 +90,11 @@ public class SteppedProcessService {
         cancelJob(job.getUuid());
     }
     public void cancelJob(String uuid){
-        Job job = jobRepository.getByUuid(uuid)
+        Job job = jobRepository.findOneByUuid(uuid)
             .orElseThrow(() -> new ProcessIllegalStateException("Job not found for uuid : " + uuid, JOB_NOT_FOUND));
 
         job.setStatus(Status.CANCELED);
-        jobRepository.save(job);
+        jobRepository.saveJob(job);
     }
 
     public Job resumeErrorJob(Job job){
@@ -108,7 +108,7 @@ public class SteppedProcessService {
         return resumeErrorJob(job.getUuid(), overrideData);
     }
     public <T> Job resumeErrorJob(String uuid, T overrideData){
-        Job job = jobRepository.getByUuid(uuid)
+        Job job = jobRepository.findOneByUuid(uuid)
             .orElseThrow(() -> new ProcessIllegalStateException("Job not found for uuid : " + uuid, JOB_NOT_FOUND));
 
         if( !Status.ERROR.equals(job.getStatus())){
@@ -124,14 +124,14 @@ public class SteppedProcessService {
                 throw new ProcessIllegalStateException("Error on serialize data", SERIALIZE_ERROR, e);
             }
         }
-        return jobRepository.save(job);
+        return jobRepository.saveJob(job);
     }
 
     public Job updatePendingJob(Job job, String data, LocalDateTime executionTime){
         return updatePendingJob(job.getUuid(), data, executionTime);
     }
     public Job updatePendingJob(String uuid, String data, LocalDateTime executionTime){
-        Job job = jobRepository.getByUuid(uuid)
+        Job job = jobRepository.findOneByUuid(uuid)
             .orElseThrow(() -> new ProcessIllegalStateException("Job not found for uuid : " + uuid, JOB_NOT_FOUND));
 
         if( !Status.PENDING.equals(job.getStatus())){
@@ -140,17 +140,17 @@ public class SteppedProcessService {
 
         job.setData(data);
         job.setNextExecution(executionTime);
-        jobRepository.save(job);
+        jobRepository.saveJob(job);
 
         return job;
     }
 
     public List<Job> getJobsByTypeAndKey(String typeCode, String key){
-        return jobRepository.getByTypeCodeAndKey(typeCode, key);
+        return jobRepository.findAllByTypeCodeAndKey(typeCode, key);
     }
 
     public Job getJobByUuid(String uuid){
-        return jobRepository.getByUuid(uuid)
+        return jobRepository.findOneByUuid(uuid)
             .orElseThrow(() -> new ProcessIllegalStateException("Job not found for uuid : " + uuid, JOB_NOT_FOUND));
     }
 
@@ -164,9 +164,9 @@ public class SteppedProcessService {
 
 
         List<Job> jobs = concat(
-            jobRepository.getByTypeCodeAndStatus(typeCode, Status.RESUMING),
-            jobRepository.getByTypeCodeAndStatus(typeCode, Status.WAITING),
-            jobRepository.getByTypeCodeAndStatus(typeCode, Status.PENDING)
+            jobRepository.findAllByTypeCodeAndStatus(typeCode, Status.RESUMING),
+            jobRepository.findAllByTypeCodeAndStatus(typeCode, Status.WAITING),
+            jobRepository.findAllByTypeCodeAndStatus(typeCode, Status.PENDING)
         ).stream()
             .filter(job -> job.getNextExecution() == null || isBeforeOrEqual(job.getNextExecution(), LocalDateTime.now()))
             .toList();
@@ -182,7 +182,7 @@ public class SteppedProcessService {
 
     public void processingJob(String uuid){
         processingJobInt(
-            jobRepository.getByUuid(uuid)
+            jobRepository.findOneByUuid(uuid)
                 .orElseThrow(() -> new ProcessIllegalStateException("Job not found for uuid : " + uuid, JOB_NOT_FOUND))
         );
     }
@@ -248,7 +248,7 @@ public class SteppedProcessService {
         };
 
         job.setStatus(Status.RUNNING);
-        jobRepository.save(job);
+        jobRepository.saveJob(job);
         enhanceMdc(job);
         log.info(logMessage);
 
@@ -275,7 +275,7 @@ public class SteppedProcessService {
     }
     private <T> void executeStep(Job job, SteppedProcess<T> steppedProcess, String stepCode) throws Exception {
         job.setStep(stepCode);
-        jobRepository.save(job);
+        jobRepository.saveJob(job);
         enhanceMdc(job);
 
         log.info("Job : " + job + " execute step : " + stepCode);
@@ -288,7 +288,7 @@ public class SteppedProcessService {
         try {
             if (!step.getCondition().test(context)) {
                 job.setStatus(Status.WAITING);
-                jobRepository.save(job);
+                jobRepository.saveJob(job);
                 return;
             }
 
@@ -301,7 +301,7 @@ public class SteppedProcessService {
         job.setData(steppedProcess.getSerializer().apply(context.getData()));
         job.setRetry(0);
         job.setMessage(null);
-        jobRepository.save(job);
+        jobRepository.saveJob(job);
 
         if (nextStepCode != null) {
             executeStep(job, steppedProcess, nextStepCode);
@@ -317,7 +317,7 @@ public class SteppedProcessService {
     private <T> void onSuccess(Job job, SteppedProcess<T> steppedProcess) {
         job.setStatus(Status.SUCCESS);
         job.setStep(null);
-        jobRepository.save(job);
+        jobRepository.saveJob(job);
 
         log.info("Job : " + job + " success");
 
@@ -337,7 +337,7 @@ public class SteppedProcessService {
             job.setStatus(Status.RESUMING);
             job.setNextExecution(LocalDateTime.now().plus(step.getRetryDelay()));
             job.setMessage(serializeError(t));
-            jobRepository.save(job);
+            jobRepository.saveJob(job);
         } else {
             //error
 
@@ -350,7 +350,7 @@ public class SteppedProcessService {
 
         job.setStatus(Status.ERROR);
         job.setMessage(serializeError(t));
-        jobRepository.save(job);
+        jobRepository.saveJob(job);
 
         try{
             steppedProcess.getOnError().accept(buildContext(job, steppedProcess), t);

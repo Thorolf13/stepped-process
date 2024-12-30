@@ -19,7 +19,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.slf4j.Logger;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.Trigger;
 import org.springframework.scheduling.support.CronTrigger;
@@ -635,13 +634,13 @@ public class SteppedProcessTest {
 
             return job;
         });
-        lenient().when(jobRepository.getByUuid(any())).thenAnswer(invocation ->
+        lenient().when(jobRepository.findOneByUuid(any())).thenAnswer(invocation ->
             Optional.of(jobs.get(invocation.getArgument(0)))
         );
-        lenient().when(jobRepository.save(any())).thenAnswer(invocation ->
+        lenient().when(jobRepository.saveJob(any())).thenAnswer(invocation ->
             invocation.getArgument(0)
         );
-        lenient().when(jobRepository.getByTypeCodeAndKey(any(), any())).thenAnswer(invocation ->
+        lenient().when(jobRepository.findAllByTypeCodeAndKey(any(), any())).thenAnswer(invocation ->
             jobs.values().stream()
             .filter(job -> job.getTypeCode().equals(invocation.getArgument(0)) && job.getKey().equals(invocation.getArgument(1)))
             .toList()
@@ -651,7 +650,7 @@ public class SteppedProcessTest {
             .filter(job -> job.getTypeCode().equals(invocation.getArgument(0)) && job.getStatus().equals(invocation.getArgument(1)))
             .count()
         );
-        lenient().when(jobRepository.getByTypeCodeAndStatus(any(), any())).thenAnswer(invocation ->
+        lenient().when(jobRepository.findAllByTypeCodeAndStatus(any(), any())).thenAnswer(invocation ->
             jobs.values().stream()
             .filter(job -> job.getTypeCode().equals(invocation.getArgument(0)) && job.getStatus().equals(invocation.getArgument(1)))
             .toList()
@@ -737,7 +736,7 @@ public class SteppedProcessTest {
     @Getter
     @Setter
     @AllArgsConstructor
-    class JobImpl implements Job{
+    class JobImpl extends Job{
         private String uuid;
         private String typeCode;
         private String key;

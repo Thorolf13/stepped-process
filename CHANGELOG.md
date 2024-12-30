@@ -1,3 +1,6 @@
+* 1.0.8
+  - change Job to abstract class
+  - change JobRepository to a Jpa-compatible interface
 * 1.0.7
   - change Job to interface
 * 1.0.6
