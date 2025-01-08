@@ -127,18 +127,26 @@ public class SteppedProcessService {
         return jobRepository.saveJob(job);
     }
 
-    public Job updatePendingJob(Job job, String data, LocalDateTime executionTime){
-        return updatePendingJob(job.getUuid(), data, executionTime);
-    }
-    public Job updatePendingJob(String uuid, String data, LocalDateTime executionTime){
+    public <T> Job updatePendingJob(String uuid, T data, LocalDateTime executionTime){
         Job job = jobRepository.findOneByUuid(uuid)
             .orElseThrow(() -> new ProcessIllegalStateException("Job not found for uuid : " + uuid, JOB_NOT_FOUND));
 
+        return updatePendingJob(job.getUuid(), data, executionTime);
+    }
+    public <T> Job updatePendingJob(Job job, T data, LocalDateTime executionTime){
         if( !Status.PENDING.equals(job.getStatus())){
             throw new ProcessIllegalStateException("Job not in pending status : " + job.getUuid(), JOB_STATUS_ERROR);
         }
 
-        job.setData(data);
+        SteppedProcess<T> steppedProcess = getProcess(job.getTypeCode());
+        String dataStr;
+        try {
+            dataStr = steppedProcess.getSerializer().apply(data);
+        } catch (Exception e) {
+            throw new ProcessIllegalStateException("Error on serialize data", "SERIALIZE_ERROR", e);
+        }
+
+        job.setData(dataStr);
         job.setNextExecution(executionTime);
         jobRepository.saveJob(job);
 

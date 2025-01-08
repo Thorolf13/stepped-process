@@ -609,12 +609,103 @@ public class SteppedProcessTest {
         assertThat(job.getStatus()).isEqualTo(Status.SUCCESS);
     }
 
+    @Test
+    public void test_multipleJobs_multiplesStatus() throws ProcessDuplicateJobException {
+        List<String> processingorder = new ArrayList<>();
+        SteppedProcess<Data> steppedProcess = SteppedProcess.<Data>builder()
+            .typeCode("PROCESS_1")
+            .serializer(Data::serialize)
+            .deserializer(Data::deserialize)
+            .addStep(Step.<Data>builder()
+                .code("STEP_1")
+                .isStart(true)
+                .action(context -> {
+                    context.getData().waypoints.add(context.getStep());
+                    processingorder.add(context.getJobKey());
+                    return null;
+                })
+                .build()
+            )
+            .build();
+        steppedProcessService.registerProcess(steppedProcess);
+
+        List<Status> statusList = List.of(
+            Status.PENDING,
+            Status.WAITING,
+            Status.PENDING,
+            Status.RESUMING,
+            Status.RESUMING,
+            Status.PENDING,
+            Status.RESUMING,
+            Status.WAITING,
+            Status.RESUMING,
+            Status.WAITING,
+            Status.SUCCESS
+        );
+        List<Job> jobs = new ArrayList<>();
+        for (int i=0 ; i < statusList.size(); i++) {
+            List<String> initialWaypoints = new ArrayList<>();
+            initialWaypoints.add("__"+i);
+            Job job = steppedProcessService.createJob("PROCESS_1", "JOB_"+i, new Data(initialWaypoints));
+            job.setStatus(statusList.get(i));
+            job.setStep("STEP_1");
+            jobs.add(job);
+        }
+
+        steppedProcessService.processingJobs("PROCESS_1");
+
+        List<String> processingorderExpected = List.of( //RESUMING before WAITING before PENDING, SUCCESS not processed
+            "JOB_3",
+            "JOB_4",
+            "JOB_6",
+            "JOB_8",
+            "JOB_1",
+            "JOB_7",
+            "JOB_9",
+            "JOB_0",
+            "JOB_2",
+            "JOB_5"
+        );
+
+        List<Status> statusListExpected = List.of(
+            Status.SUCCESS,
+            Status.SUCCESS,
+            Status.SUCCESS,
+            Status.SUCCESS,
+            Status.SUCCESS,
+            Status.SUCCESS,
+            Status.SUCCESS,
+            Status.SUCCESS,
+            Status.SUCCESS,
+            Status.SUCCESS,
+            Status.SUCCESS
+        );
+
+        List<String> dataExpected = List.of(
+            "[__0,STEP_1]",
+            "[__1,STEP_1]",
+            "[__2,STEP_1]",
+            "[__3,STEP_1]",
+            "[__4,STEP_1]",
+            "[__5,STEP_1]",
+            "[__6,STEP_1]",
+            "[__7,STEP_1]",
+            "[__8,STEP_1]",
+            "[__9,STEP_1]",
+            "[__10]"
+        );
+
+        assertThat(jobs.stream().map(Job::getStatus).toList()).isEqualTo(statusListExpected);
+        assertThat(jobs.stream().map(Job::getData).toList()).isEqualTo(dataExpected);
+        assertThat(processingorder).isEqualTo(processingorderExpected);
+    }
+
     //############################################
     // utils
     //############################################
 
     private void mockJobRepository(){
-        Map<String, Job> jobs = new HashMap<>();
+        List<Job> jobs = new ArrayList<>();
         AtomicInteger jobCounter = new AtomicInteger(0);
 
         lenient().when(jobRepository.createJob(any(), any(), any(), any())).thenAnswer(invocation -> {
@@ -630,28 +721,28 @@ public class SteppedProcessTest {
                 invocation.getArgument(3)
             );
 
-            jobs.put(job.getUuid(), job);
+            jobs.add(job);
 
             return job;
         });
         lenient().when(jobRepository.findOneByUuid(any())).thenAnswer(invocation ->
-            Optional.of(jobs.get(invocation.getArgument(0)))
+            jobs.stream().filter(job -> job.getUuid().equals(invocation.getArgument(0))).findFirst()
         );
         lenient().when(jobRepository.saveJob(any())).thenAnswer(invocation ->
             invocation.getArgument(0)
         );
         lenient().when(jobRepository.findAllByTypeCodeAndKey(any(), any())).thenAnswer(invocation ->
-            jobs.values().stream()
+            jobs.stream()
             .filter(job -> job.getTypeCode().equals(invocation.getArgument(0)) && job.getKey().equals(invocation.getArgument(1)))
             .toList()
         );
         lenient().when(jobRepository.countByTypeCodeAndStatus(any(), any())).thenAnswer(invocation ->
-            (int)jobs.values().stream()
+            (int)jobs.stream()
             .filter(job -> job.getTypeCode().equals(invocation.getArgument(0)) && job.getStatus().equals(invocation.getArgument(1)))
             .count()
         );
         lenient().when(jobRepository.findAllByTypeCodeAndStatus(any(), any())).thenAnswer(invocation ->
-            jobs.values().stream()
+            jobs.stream()
             .filter(job -> job.getTypeCode().equals(invocation.getArgument(0)) && job.getStatus().equals(invocation.getArgument(1)))
             .toList()
         );
