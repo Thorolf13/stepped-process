@@ -28,10 +28,10 @@ public class SteppedProcessService {
     private final BiConsumer<String, Integer> onProcessingJobs;
 
 
-    public SteppedProcessService(JobRepository<Job> jobRepository){
+    public SteppedProcessService(JobRepository jobRepository){
         this(jobRepository, (typeCode, count) -> {});
     }
-    public SteppedProcessService(JobRepository<Job> jobRepository, BiConsumer<String, Integer> onProcessingJobs){
+    public SteppedProcessService(JobRepository jobRepository, BiConsumer<String, Integer> onProcessingJobs){
         this.jobRepository = jobRepository;
         this.onProcessingJobs = onProcessingJobs;
         processMap = new HashMap<>();
@@ -250,7 +250,7 @@ public class SteppedProcessService {
         try {
             context = buildContext(job, process);
         } catch (Throwable t) {
-            onError(job, steppedProcess, t);
+            onError(job, steppedProcess, t, null);
             return;
         }
 
@@ -270,11 +270,10 @@ public class SteppedProcessService {
                 throw new ProcessIllegalStateException("Job already processed : " + job.getUuid(), JOB_ALREADY_PROCESSED);
         };
 
-        job.setStatus(Status.RUNNING);
         jobRepository.saveJob(job);
         enhanceMdc(job);
 
-        processing(job, steppedProcess, job.getStep());
+        processing(job, steppedProcess, job.getStep(), context);
     }
 
     private <T> JobContext<T> buildContext(Job job, SteppedProcess<T> steppedProcess) throws Exception {
@@ -287,23 +286,30 @@ public class SteppedProcessService {
         );
     }
 
-    private <T> void processing(Job job, SteppedProcess<T> steppedProcess, String stepCode) {
+    private <T> JobContext<T> updateAndRebuildContext(Job job, SteppedProcess<T> steppedProcess, JobContext<T> context) throws Exception {
+        job.setData(steppedProcess.getSerializer().apply(context.getData()));
+        jobRepository.saveJob(job);
+        return buildContext(job, steppedProcess);
+    }
+
+    private <T> void processing(Job job, SteppedProcess<T> steppedProcess, String stepCode, JobContext<T> context) {
         try {
-            executeStep(job, steppedProcess, stepCode);
+            executeStep(job, steppedProcess, stepCode, context);
         } catch (Throwable t) {
-            onError(job, steppedProcess, t);
+            onError(job, steppedProcess, t, context);
         } finally {
             clearMdc();
         }
     }
-    private <T> void executeStep(Job job, SteppedProcess<T> steppedProcess, String stepCode) throws Exception {
+    private <T> void executeStep(Job job, SteppedProcess<T> steppedProcess, String stepCode, JobContext<T> context) throws Exception {
         job.setStep(stepCode);
         jobRepository.saveJob(job);
         enhanceMdc(job);
 
+        context = updateAndRebuildContext(job, steppedProcess, context);
+
         Step<T> step = steppedProcess.getStepByCode(stepCode)
             .orElseThrow(() -> new ProcessIllegalStateException("Step not found. process : " + steppedProcess.getTypeCode() + " step : " + stepCode, STEP_NOT_FOUND));
-        JobContext<T> context = buildContext(job, steppedProcess);
 
         String nextStepCode = null;
         try {
@@ -321,7 +327,7 @@ public class SteppedProcessService {
             step.getStepListener().onStepSuccess(context);
             steppedProcess.getJobListener().onStepSuccess(context);
         } catch (Throwable t) {
-            onExecutionError(job, steppedProcess, step, t);
+            onExecutionError(job, steppedProcess, step, t, context);
             return;
         }
 
@@ -331,9 +337,9 @@ public class SteppedProcessService {
         jobRepository.saveJob(job);
 
         if (nextStepCode != null) {
-            executeStep(job, steppedProcess, nextStepCode);
+            executeStep(job, steppedProcess, nextStepCode, context);
         } else {
-            onSuccess(job, steppedProcess);
+            onSuccess(job, steppedProcess, context);
         }
     }
 
@@ -341,24 +347,27 @@ public class SteppedProcessService {
     // on event
     //############################################
 
-    private <T> void onSuccess(Job job, SteppedProcess<T> steppedProcess) {
+    private <T> void onSuccess(Job job, SteppedProcess<T> steppedProcess, JobContext<T> context) {
         job.setStatus(Status.SUCCESS);
         job.setStep(null);
         jobRepository.saveJob(job);
 
 
         try{
-            steppedProcess.getJobListener().onJobSuccess(buildContext(job, steppedProcess));
+            steppedProcess.getJobListener().onJobSuccess(context);
+            job.setData(steppedProcess.getSerializer().apply(context.getData()));
+            jobRepository.saveJob(job);
         } catch (Throwable t) {
             t.printStackTrace();
         }
     }
 
-    private <T> void onExecutionError(Job job, SteppedProcess<T> steppedProcess, Step<T> step, Throwable t) {
+    private <T> void onExecutionError(Job job, SteppedProcess<T> steppedProcess, Step<T> step, Throwable t, JobContext<T> context) {
         try {
-            JobContext<T> context = buildContext(job, steppedProcess);
             step.getStepListener().onStepError(context, t);
             steppedProcess.getJobListener().onStepError(context, t);
+            job.setData(steppedProcess.getSerializer().apply(context.getData()));
+            jobRepository.saveJob(job);
         } catch (Throwable t2) {
             t2.printStackTrace();
         }
@@ -372,18 +381,20 @@ public class SteppedProcessService {
         } else {
             //error
 
-            onError(job, steppedProcess, t);
+            onError(job, steppedProcess, t, context);
         }
     }
 
-    private <T> void onError(Job job, SteppedProcess<T> steppedProcess, Throwable t) {
+    private <T> void onError(Job job, SteppedProcess<T> steppedProcess, Throwable t, JobContext<T> context) {
 
         job.setStatus(Status.ERROR);
         job.setMessage(serializeError(t));
         jobRepository.saveJob(job);
 
         try{
-            steppedProcess.getJobListener().onJobError(buildContext(job, steppedProcess), t);
+            steppedProcess.getJobListener().onJobError(context, t);
+            job.setData(steppedProcess.getSerializer().apply(context.getData()));
+            jobRepository.saveJob(job);
         } catch (Throwable t2) {
             t2.printStackTrace();
         }
