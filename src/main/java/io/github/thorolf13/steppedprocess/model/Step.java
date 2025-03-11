@@ -1,6 +1,7 @@
 package io.github.thorolf13.steppedprocess.model;
 
 import io.github.thorolf13.steppedprocess.function.CheckedFunction;
+import io.github.thorolf13.steppedprocess.listener.StepListener;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -22,4 +23,6 @@ public class Step<T> {
     private Integer maxRetry = 0;
     @Builder.Default
     private Duration retryDelay = Duration.ZERO;
+    @Builder.Default
+    private StepListener<T> stepListener = new StepListener<T>();
 }

@@ -13,6 +13,7 @@ public class JobContext<T> {
     private final String jobUuid;
     private final String jobKey;
     private final String step;
+    private final Integer nbRetry;
 
     private T data;
 }

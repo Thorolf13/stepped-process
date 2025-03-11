@@ -2,6 +2,7 @@ package io.github.thorolf13.steppedprocess.model;
 
 import io.github.thorolf13.steppedprocess.exception.ProcessIllegalStateException;
 import io.github.thorolf13.steppedprocess.function.CheckedFunction;
+import io.github.thorolf13.steppedprocess.listener.JobListener;
 import lombok.Getter;
 
 import java.util.ArrayList;
@@ -9,8 +10,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ScheduledFuture;
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -21,9 +20,9 @@ public class SteppedProcess<T> {
     private final CheckedFunction<T, String> serializer;
     private final Map<String, Step<T>> steps;
     private final DuplicatePolicy duplicatePolicy;
-    private final Consumer<JobContext<T>> onSuccess;
-    private final BiConsumer<JobContext<T>, Throwable> onError;
     private Function<Runnable, ScheduledFuture<?>> scheduleSupplier;
+
+    private final JobListener<T> jobListener;
 
     public Optional<Step<T>> getStepByCode(String code){
         return Optional.ofNullable(steps.get(code));
@@ -83,9 +82,8 @@ public class SteppedProcess<T> {
         this.deserializer = builder.deserializer;
         this.serializer = builder.serializer;
         this.duplicatePolicy = builder.duplicatePolicy;
-        this.onSuccess = builder.onSuccess;
-        this.onError = builder.onError;
         this.scheduleSupplier = builder.scheduleSupplier;
+        this.jobListener = builder.jobListener == null ? new JobListener<>() : builder.jobListener;
     }
 
     public static class  Builder<T> {
@@ -94,9 +92,8 @@ public class SteppedProcess<T> {
         private CheckedFunction<T, String> serializer;
         private List<Step<T>> steps;
         private DuplicatePolicy duplicatePolicy = DuplicatePolicy.ALLOW;
-        private Consumer<JobContext<T>> onSuccess = jobContext -> {};
-        private BiConsumer<JobContext<T>, Throwable> onError = (jobContext, err) -> {};
         private Function<Runnable, ScheduledFuture<?>> scheduleSupplier;
+        private JobListener<T> jobListener;
 
         public Builder<T> typeCode(String code) {
             this.typeCode = code;
@@ -126,18 +123,13 @@ public class SteppedProcess<T> {
             return this;
         }
 
-        public Builder<T> onSuccess(Consumer<JobContext<T>> onSuccess) {
-            this.onSuccess = onSuccess;
-            return this;
-        }
-
-        public Builder<T> onError(BiConsumer<JobContext<T>, Throwable> onError) {
-            this.onError = onError;
-            return this;
-        }
-
         public Builder<T> schedule(Function<Runnable, ScheduledFuture<?>> scheduleSupplier) {
             this.scheduleSupplier = scheduleSupplier;
+            return this;
+        }
+
+        public Builder<T> jobListener(JobListener jobListener) {
+            this.jobListener = jobListener;
             return this;
         }
 

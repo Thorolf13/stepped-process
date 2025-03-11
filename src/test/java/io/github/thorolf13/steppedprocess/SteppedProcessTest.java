@@ -1,6 +1,8 @@
 package io.github.thorolf13.steppedprocess;
 
 import io.github.thorolf13.steppedprocess.exception.ProcessDuplicateJobException;
+import io.github.thorolf13.steppedprocess.listener.JobListener;
+import io.github.thorolf13.steppedprocess.listener.StepListener;
 import io.github.thorolf13.steppedprocess.model.Job;
 import io.github.thorolf13.steppedprocess.model.Status;
 import io.github.thorolf13.steppedprocess.model.Step;
@@ -28,10 +30,12 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -50,13 +54,45 @@ public class SteppedProcessTest {
     private JobRepository jobRepository;
 
     @Mock
-    private AService aService;
+    private JobListener<Data> jobListener;
 
+    @Mock
+    private StepListener<Data> stepListener;
+
+    private void verifyListeners(
+        int onJobStart,
+        int onJobRetry,
+        int onJobResume,
+        int onJobSuccess,
+        int onJobError,
+        int onStepStart,
+        int onStepSuccess,
+        int onStepError
+    ){
+        verify(jobListener, times(onJobStart)).onJobStart(any());
+        verify(jobListener, times(onJobRetry)).onJobRetry(any());
+        verify(jobListener, times(onJobResume)).onJobResume(any());
+        verify(jobListener, times(onJobSuccess)).onJobSuccess(any());
+        verify(jobListener, times(onJobError)).onJobError(any(), any());
+
+        verify(jobListener, times(onStepStart)).onStepStart(any());
+        verify(jobListener, times(onStepSuccess)).onStepSuccess(any());
+        verify(jobListener, times(onStepError)).onStepError(any(), any());
+
+        verify(stepListener, times(onStepStart)).onStepStart(any());
+        verify(stepListener, times(onStepSuccess)).onStepSuccess(any());
+        verify(stepListener, times(onStepError)).onStepError(any(), any());
+    }
+
+    private void onProcessingJobsMock(String typeCode, Integer count){
+
+    }
 
     @BeforeEach
     public void setUp() {
-        ReflectionTestUtils.setField(steppedProcessService, "log", log);
+        ReflectionTestUtils.setField(steppedProcessService, "onProcessingJobs", (BiConsumer<String, Integer>)this::onProcessingJobsMock);
         mockJobRepository();
+        clearInvocations(jobListener, stepListener);
     }
 
     @Test
@@ -72,6 +108,7 @@ public class SteppedProcessTest {
                     context.getData().waypoints.add(context.getStep());
                     return "STEP_2";
                 })
+                .stepListener(stepListener)
                 .build()
             )
             .addStep(Step.<Data>builder()
@@ -80,10 +117,10 @@ public class SteppedProcessTest {
                     context.getData().waypoints.add(context.getStep());
                     return null;
                 })
+                .stepListener(stepListener)
                 .build()
             )
-            .onSuccess(context->aService.success("SUCCESS"))
-            .onError((context, err)->aService.error("ERROR", err))
+            .jobListener(jobListener)
             .build();
 
         steppedProcessService.registerProcess(steppedProcess);
@@ -93,8 +130,7 @@ public class SteppedProcessTest {
         assertThat(job.getStatus()).isEqualTo(Status.SUCCESS);
         assertThat(job.getData()).isEqualTo("[STEP_1,STEP_2]");
 
-        verify(aService, times(1)).success(any());
-        verify(aService, never()).error(any(), any());
+        verifyListeners(1, 0, 0, 1, 0, 2, 2, 0);
     }
 
     @Test
@@ -110,6 +146,7 @@ public class SteppedProcessTest {
                     context.getData().waypoints.add(context.getStep());
                     return "STEP_2";
                 })
+                .stepListener(stepListener)
                 .build()
             )
             .addStep(Step.<Data>builder()
@@ -117,10 +154,10 @@ public class SteppedProcessTest {
                 .action(context -> {
                     throw new RuntimeException("ERROR", new RuntimeException("CAUSE1", new RuntimeException("CAUSE2")));
                 })
+                .stepListener(stepListener)
                 .build()
             )
-            .onSuccess(context->aService.success("SUCCESS"))
-            .onError((context, err)->aService.error("ERROR", err))
+            .jobListener(jobListener)
             .build();
 
         steppedProcessService.registerProcess(steppedProcess);
@@ -134,8 +171,7 @@ public class SteppedProcessTest {
             "Caused by : java.lang.RuntimeException: CAUSE1\n" +
             "Caused by : java.lang.RuntimeException: CAUSE2");
 
-        verify(aService, never()).success(any());
-        verify(aService, times(1)).error(any(), any());
+        verifyListeners(1, 0, 0, 0, 1, 2, 1, 1);
     }
 
     @Test
@@ -153,6 +189,7 @@ public class SteppedProcessTest {
                     context.getData().waypoints.add(context.getStep());
                     return "STEP_2";
                 })
+                .stepListener(stepListener)
                 .build()
             )
             .addStep(Step.<Data>builder()
@@ -167,10 +204,10 @@ public class SteppedProcessTest {
                     }
                 })
                 .maxRetry(1)
+                .stepListener(stepListener)
                 .build()
             )
-            .onSuccess(context->aService.success("SUCCESS"))
-            .onError((context, err)->aService.error("ERROR", err))
+            .jobListener(jobListener)
             .build();
 
 
@@ -181,16 +218,16 @@ public class SteppedProcessTest {
         assertThat(job.getStatus()).isEqualTo(Status.RESUMING);
         assertThat(job.getData()).isEqualTo("[STEP_1]");
         assertThat(job.getMessage()).isEqualTo("java.lang.RuntimeException: ERROR");
-        verify(aService, never()).success(any());
-        verify(aService, never()).error(any(), any());
+
+        verifyListeners(1, 0, 0, 0, 0, 2, 1, 1);
 
         steppedProcessService.processingJob("uuid-1");
 
         assertThat(job.getStatus()).isEqualTo(Status.SUCCESS);
         assertThat(job.getData()).isEqualTo("[STEP_1,STEP_2]");
         assertThat(job.getMessage()).isEqualTo(null);
-        verify(aService, times(1)).success(any());
-        verify(aService, never()).error(any(), any());
+
+        verifyListeners(1, 1, 0, 1, 0, 3, 2, 1);
     }
 
     @Test
@@ -208,6 +245,7 @@ public class SteppedProcessTest {
                     context.getData().waypoints.add(context.getStep());
                     return "STEP_2";
                 })
+                .stepListener(stepListener)
                 .build()
             )
             .addStep(Step.<Data>builder()
@@ -223,10 +261,10 @@ public class SteppedProcessTest {
                 })
                 .maxRetry(1)
                 .retryDelay(Duration.of(1, ChronoUnit.HOURS))
+                .stepListener(stepListener)
                 .build()
             )
-            .onSuccess(context->aService.success("SUCCESS"))
-            .onError((context, err)->aService.error("ERROR", err))
+            .jobListener(jobListener)
             .build();
 
 
@@ -242,8 +280,8 @@ public class SteppedProcessTest {
         assertThat(job.getStatus()).isEqualTo(Status.RESUMING);
         assertThat(job.getData()).isEqualTo("[STEP_1]");
         assertThat(job.getMessage()).isEqualTo("java.lang.RuntimeException: ERROR");
-        verify(aService, never()).success(any());
-        verify(aService, never()).error(any(), any());
+
+        verifyListeners(1, 0, 0, 0, 0, 2, 1, 1);
 
         //retry before delay
         MockTime.excecuteAtTime(
@@ -258,8 +296,8 @@ public class SteppedProcessTest {
         assertThat(job.getStatus()).isEqualTo(Status.RESUMING);
         assertThat(job.getData()).isEqualTo("[STEP_1]");
         assertThat(job.getMessage()).isEqualTo("java.lang.RuntimeException: ERROR");
-        verify(aService, never()).success(any());
-        verify(aService, never()).error(any(), any());
+
+        verifyListeners(1, 0, 0, 0, 0, 2, 1, 1);
 
         //retry after delay
         MockTime.excecuteAtTime(
@@ -270,8 +308,8 @@ public class SteppedProcessTest {
         assertThat(job.getStatus()).isEqualTo(Status.SUCCESS);
         assertThat(job.getData()).isEqualTo("[STEP_1,STEP_2]");
         assertThat(job.getMessage()).isEqualTo(null);
-        verify(aService, times(1)).success(any());
-        verify(aService, never()).error(any(), any());
+
+        verifyListeners(1, 1, 0, 1, 0, 3, 2, 1);
     }
 
     @Test
@@ -289,6 +327,7 @@ public class SteppedProcessTest {
                     context.getData().waypoints.add(context.getStep());
                     return "STEP_2";
                 })
+                .stepListener(stepListener)
                 .build()
             )
             .addStep(Step.<Data>builder()
@@ -306,10 +345,10 @@ public class SteppedProcessTest {
                     return null;
                 })
                 .maxRetry(1)
+                .stepListener(stepListener)
                 .build()
             )
-            .onSuccess(context->aService.success("SUCCESS"))
-            .onError((context, err)->aService.error("ERROR", err))
+            .jobListener(jobListener)
             .build();
 
         steppedProcessService.registerProcess(steppedProcess);
@@ -319,16 +358,16 @@ public class SteppedProcessTest {
         assertThat(job.getStatus()).isEqualTo(Status.WAITING);
         assertThat(job.getData()).isEqualTo("[STEP_1]");
         assertThat(job.getMessage()).isEqualTo(null);
-        verify(aService, never()).success(any());
-        verify(aService, never()).error(any(), any());
+
+        verifyListeners(1, 0, 0, 0, 0, 1, 1, 0);
 
         steppedProcessService.processingJob("uuid-1");
 
         assertThat(job.getStatus()).isEqualTo(Status.SUCCESS);
         assertThat(job.getData()).isEqualTo("[STEP_1,STEP_2]");
         assertThat(job.getMessage()).isEqualTo(null);
-        verify(aService, times(1)).success(any());
-        verify(aService, never()).error(any(), any());
+
+        verifyListeners(1, 0, 1, 1, 0, 2, 2, 0);
     }
 
     @Test
@@ -346,6 +385,7 @@ public class SteppedProcessTest {
                     context.getData().waypoints.add(context.getStep());
                     return "STEP_2";
                 })
+                .stepListener(stepListener)
                 .build()
             )
             .addStep(Step.<Data>builder()
@@ -355,10 +395,10 @@ public class SteppedProcessTest {
                     return null;
                 })
                 .maxRetry(1)
+                .stepListener(stepListener)
                 .build()
             )
-            .onSuccess(context->aService.success("SUCCESS"))
-            .onError((context, err)->aService.error("ERROR", err))
+            .jobListener(jobListener)
             .build();
 
         steppedProcessService.registerProcess(steppedProcess);
@@ -371,8 +411,8 @@ public class SteppedProcessTest {
         assertThat(job.getStatus()).isEqualTo(Status.PENDING);
         assertThat(job.getData()).isEqualTo("[]");
         assertThat(job.getMessage()).isEqualTo(null);
-        verify(aService, never()).success(any());
-        verify(aService, never()).error(any(), any());
+
+        verifyListeners(0, 0, 0, 0, 0, 0, 0, 0);
 
         MockTime.excecuteAtTime(
             LocalDateTime.of(2021, 1, 1, 11, 0),
@@ -382,8 +422,8 @@ public class SteppedProcessTest {
         assertThat(job.getStatus()).isEqualTo(Status.SUCCESS);
         assertThat(job.getData()).isEqualTo("[STEP_1,STEP_2]");
         assertThat(job.getMessage()).isEqualTo(null);
-        verify(aService, times(1)).success(any());
-        verify(aService, never()).error(any(), any());
+
+        verifyListeners(1, 0, 0, 1, 0, 2, 2, 0);
     }
 
     @Test
@@ -784,16 +824,6 @@ public class SteppedProcessTest {
         @Override
         public ScheduledFuture<?> scheduleWithFixedDelay(Runnable task, Duration delay) {
             return null;
-        }
-    }
-
-    public static class AService{
-        public void success(String arg1){
-
-        }
-
-        public void error(String arg1, Throwable t){
-
         }
     }
 
