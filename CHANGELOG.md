@@ -1,3 +1,7 @@
+* 1.1.1
+  - remove onSuccess, onError, remove logs
+  - add jobListener and stepListener
+  - fixes
 * 1.0.8
   - change Job to abstract class
   - change JobRepository to a Jpa-compatible interface

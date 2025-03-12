@@ -69,8 +69,6 @@ SteppedProcess<Data> steppedProcess = SteppedProcess.<Data>builder()
     //optional
     .schedule(/*...*/)
     .duplicatePolicy(SteppedProcess.DuplicatePolicy.DENY_PENDING)
-    .onSuccess(onSuccess)
-    .onError(onError)
     .build();
 ```
 
@@ -148,8 +146,18 @@ Parameters:
 - `addStep` Step - add steps to the process
 - `schedule` _Function<Runnable, ScheduledFuture<?>>_ - (optional) scheduler
 - `duplicatePolicy` _SteppedProcess.DuplicatePolicy_ - (optional) policy to handle duplicate jobs (duplicate 'key' and 'typeCode')
-- `onSuccess` _Consumer<JobContext<T>>_ - (optional) hook to execute on success
-- `onError` _BiConsumer<JobContext<T>, Throwable>_ - (optional) hook to execute on error
+- `jobListener` _JobListener<T>_ - (optional) listener to handle job lifecycle
+
+### JobListener
+Methods:
+- `void onJobStart(Job job)` - called when job is starting
+- `void onJobError(Job job, Throwable throwable)` - called when job is finished with error
+- `void onJobSuccess(Job job)` - called when job is finished successfully
+- `void onJobResume(Job job)` - called when job is resuming after waiting
+- `void onJobRetry(Job job)` - called when job is retrying after failure
+- `void onStepStart(Job job, String step)` - called when any step is starting
+- `void onStepError(Job job, String step, Throwable throwable)` - called when any step is finished with error
+- `void onStepSuccess(Job job, String step)` - called when any step is finished successfully
 
 ### Step
 Parameters:
@@ -159,6 +167,13 @@ Parameters:
 - `condition` _Predicate<JobContext<T>>_ - (optional) predicate to check before executing the action
 - `maxRetry` _int_ - (optional) maximum number of retries
 - `retryDelay` _Duration_ - (optional) delay between retries
+- `stepListener` _StepListener<T>_ - (optional) listener to handle step lifecycle'
+
+### StepListener
+Methods:
+- `void onStepStart(JobContext<T> context)` - called when step is starting
+- `void onStepError(JobContext<T> context, Throwable throwable)` - called when step is finished with error
+- `void onStepSuccess(JobContext<T> context)` - called when step is finished successfully
 
 ### JobContext
 Parameters:
@@ -169,6 +184,8 @@ Parameters:
 
 ### SteppedProcessService
 Methods:
+- `SteppedProcessService(JobRepository jobRepository)` - constructor
+- `SteppedProcessService(JobRepository jobRepository, BiConsumer<String, int> onJobsProcessing)` - constructor with listener
 - `void registerProcess(SteppedProcess<T> process)` - register a process
 - `Job createJob(String typeCode, String key, T data, Date executionDate)` - create a delayed job
 - `Job createJob(String typeCode, String key, T data)` - create a job'
@@ -218,16 +235,71 @@ public class SchedulerConfig {
 }
 ```
 
-### Hooks
+### Listeners
 
 ```java
 SteppedProcess<Data> steppedProcess = SteppedProcess.<Data>builder()
-    .onSuccess(context -> {
-        //do some stuff
+    .jobListener(new JobListener<Data>() {
+        @Override
+        public void onJobStart(Job job) {
+            //...
+        }
+
+        @Override
+        public void onJobError(Job job, Throwable throwable) {
+            //...
+        }
+
+        @Override
+        public void onJobSuccess(Job job) {
+            //...
+        }
+
+        @Override
+        public void onJobResume(Job job) {
+            //...
+        }
+
+        @Override
+        public void onJobRetry(Job job) {
+            //...
+        }
+
+        @Override
+        public void onStepStart(Job job, String step) {
+            //...
+        }
+
+        @Override
+        public void onStepError(Job job, String step, Throwable throwable) {
+            //...
+        }
+
+        @Override
+        public void onStepSuccess(Job job, String step) {
+            //...
+        }
     })
-    .onError((context, throwable) -> {
-        //do some stuff
-    })
+    .addStep(Step.<Data>builder()
+        .stepListener(new StepListener<Data>() {
+            @Override
+            public void onStepStart(JobContext<Data> context) {
+                //...
+            }
+
+            @Override
+            public void onStepError(JobContext<Data> context, Throwable throwable) {
+                //...
+            }
+
+            @Override
+            public void onStepSuccess(JobContext<Data> context) {
+                //...
+            }
+        })
+        //...
+        .build()
+    )
     //...
     .build();
 ```
