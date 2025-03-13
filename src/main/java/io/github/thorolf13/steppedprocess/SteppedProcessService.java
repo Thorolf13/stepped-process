@@ -270,6 +270,7 @@ public class SteppedProcessService {
                 throw new ProcessIllegalStateException("Job already processed : " + job.getUuid(), JOB_ALREADY_PROCESSED);
         };
 
+        job.setStatus(Status.RUNNING);
         jobRepository.saveJob(job);
         enhanceMdc(job);
 
